@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.RectF
 import android.os.Build
 import android.os.IBinder
@@ -21,6 +22,7 @@ import com.floattrans.app.core.AppState
 import com.floattrans.app.core.Languages
 import com.floattrans.app.core.OcrEngine
 import com.floattrans.app.core.Prefs
+import com.floattrans.app.core.TextGrouper
 import com.floattrans.app.core.TranslateEngine
 import com.floattrans.app.overlay.BubbleOverlay
 import com.floattrans.app.overlay.ControlPanel
@@ -37,6 +39,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withContext
+import kotlin.math.abs
 
 class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callbacks {
 
@@ -52,6 +55,9 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
     private var loopJob: Job? = null
     private var stopping = false
     private var lastKey = ""
+
+    /** Fingerprint of the screen as it looked after the last translation. */
+    private var baseline: IntArray? = null
 
     private val captureLock = Mutex()
 
@@ -156,6 +162,13 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
 
     // ------------------------------------------------------------- translate flow
 
+    /**
+     * Automatic mode watches the screen instead of OCR-ing on a fixed timer:
+     * every few hundred milliseconds it fingerprints the page (cheap pixel
+     * sampling, no bitmap copy) and starts a translation the moment the page
+     * actually changes — a tap to the next chapter, a swipe to the next page or
+     * a webtoon scroll. Nothing has to be pressed in between.
+     */
     private fun startAutoLoopIfNeeded() {
         loopJob?.cancel()
         loopJob = null
@@ -164,11 +177,56 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
         bubble.setAutoMode(auto)
         if (!auto) return
         loopJob = scope.launch {
+            translateOnce(force = true)
+            val pollMs = Prefs.intervalMs.toLong().coerceIn(MIN_POLL_MS, MAX_POLL_MS)
             while (isActive) {
+                delay(pollMs)
+                if (panel.isAttached) continue
+
+                val probe = withContext(Dispatchers.Default) { capturer.sampleSignature() }
+                    ?: continue
+                val reference = baseline
+                if (reference == null) {
+                    baseline = probe
+                    continue
+                }
+                if (changedRatio(reference, probe) < CHANGE_RATIO) continue
+
+                // New page detected. Give loading artwork a moment to settle so
+                // we never OCR a half painted screen.
+                var previous = probe
+                var rounds = 0
+                while (isActive && rounds++ < SETTLE_ROUNDS) {
+                    delay(SETTLE_DELAY_MS)
+                    val next = withContext(Dispatchers.Default) { capturer.sampleSignature() }
+                        ?: break
+                    val stillMoving = changedRatio(previous, next) >= SETTLE_RATIO
+                    previous = next
+                    if (!stillMoving) break
+                }
+
                 translateOnce(force = false)
-                delay(Prefs.intervalMs.toLong().coerceIn(800L, 20_000L))
             }
         }
+    }
+
+    private fun changedRatio(a: IntArray, b: IntArray): Float {
+        if (a.size != b.size || a.isEmpty()) return 1f
+        var changed = 0
+        for (index in a.indices) {
+            if (abs(a[index] - b[index]) > SIGNATURE_TOLERANCE) changed++
+        }
+        return changed.toFloat() / a.size
+    }
+
+    /**
+     * Remembers what the screen looks like *with* our translation drawn, so the
+     * next poll compares like with like and only a real page change triggers work.
+     */
+    private suspend fun refreshBaseline() {
+        delay(BASELINE_DELAY_MS)
+        val signature = withContext(Dispatchers.Default) { capturer.sampleSignature() }
+        if (signature != null) baseline = signature
     }
 
     private fun requestTranslate() {
@@ -184,57 +242,68 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
 
     private suspend fun translateOnce(force: Boolean) {
         if (!captureLock.tryLock()) return
+        var shot: Bitmap? = null
         try {
             AppState.setBusy(true)
             bubble.setBusy(true)
 
-            val bitmap = withContext(Dispatchers.Default) { captureHidden() }
-            if (bitmap == null) {
+            shot = captureHidden()
+            val frame = shot ?: run {
                 AppState.setStatus("Layar tidak dapat ditangkap")
                 return
             }
 
-            val captureWidth = bitmap.width
-            val captureHeight = bitmap.height
+            val captureWidth = frame.width
+            val captureHeight = frame.height
             val lines = try {
                 withContext(Dispatchers.Default) {
-                    ocrEngine.recognize(bitmap, Prefs.ocrScript)
+                    ocrEngine.recognize(frame, Prefs.ocrScript)
                 }
-            } finally {
-                bitmap.recycle()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Throwable) {
+                AppState.setStatus("OCR gagal: ${error.message ?: error.javaClass.simpleName}")
+                return
             }
 
             if (lines.isEmpty()) {
                 translationOverlay.clear()
-                AppState.setStatus("Tidak ada teks terdeteksi")
+                lastKey = ""
+                AppState.setStatus("Belum ada teks — menunggu halaman berikutnya")
                 return
             }
 
-            val key = lines.joinToString("\n") { it.text }
+            val groups = TextGrouper.group(lines)
+            val key = groups.joinToString("\n") { it.text }
             if (!force && key == lastKey) return
             lastKey = key
 
-            AppState.setStatus("Menerjemahkan ${lines.size} baris…")
+            AppState.setStatus("Menerjemahkan ${groups.size} balon teks…")
             val result = withContext(Dispatchers.Default) {
-                translateEngine.translate(lines, Prefs.sourceLang, Prefs.targetLang)
+                translateEngine.translateTexts(
+                    groups.map { it.text },
+                    Prefs.sourceLang,
+                    Prefs.targetLang
+                )
             }
 
-            val items = lines.mapIndexed { index, line ->
-                TranslationCanvasView.Item(
-                    translated = result.lines.getOrNull(index) ?: line.text,
-                    original = line.text,
-                    box = RectF(
-                        line.left.toFloat(),
-                        line.top.toFloat(),
-                        line.right.toFloat(),
-                        line.bottom.toFloat()
+            val items = withContext(Dispatchers.Default) {
+                groups.mapIndexed { index, group ->
+                    val (light, averageColor) = sampleRegion(frame, group.box)
+                    TranslationCanvasView.Item(
+                        translated = result.lines.getOrNull(index)
+                            ?.takeIf { it.isNotBlank() } ?: group.text,
+                        original = group.text,
+                        box = RectF(group.box),
+                        lightBackground = light,
+                        background = averageColor
                     )
-                )
+                }
             }
             translationOverlay.render(items, captureWidth, captureHeight)
             AppState.setResult(result.lines.joinToString("\n"))
             AppState.setStatus(
-                "${lines.size} baris — ${Languages.label(result.sourceLang)} → " +
+                "${groups.size} balon — ${Languages.label(result.sourceLang)} → " +
                     Languages.label(Prefs.targetLang)
             )
         } catch (cancelled: CancellationException) {
@@ -242,23 +311,66 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
         } catch (error: Throwable) {
             AppState.setStatus("Gagal: ${error.message ?: error.javaClass.simpleName}")
         } finally {
+            runCatching { shot?.recycle() }
             captureLock.unlock()
             AppState.setBusy(false)
             bubble.setBusy(false)
+            refreshBaseline()
         }
     }
 
-    /** Hides our own windows, grabs a frame, then restores them. */
+    /**
+     * Hides our own windows, grabs a frame, then restores them.
+     *
+     * The window calls must stay on the main thread: hiding/showing overlay
+     * views from a worker thread throws "Only the original thread that created
+     * a view hierarchy can touch its views". Only the pixel copy is offloaded.
+     */
     private suspend fun captureHidden(): Bitmap? {
         capturer.drain()
         panel.hide()
         bubble.setWindowVisible(false)
         translationOverlay.setWindowVisible(false)
         delay(HIDE_DELAY_MS)
-        val bitmap = capturer.captureNow()
+        val bitmap = withContext(Dispatchers.Default) { capturer.captureNow() }
         bubble.setWindowVisible(true)
         translationOverlay.setWindowVisible(true)
         return bitmap
+    }
+
+    /** Average colour of the OCR box: picks black-on-light or white-on-dark lettering. */
+    private fun sampleRegion(bitmap: Bitmap, box: RectF): Pair<Boolean, Int> {
+        val left = box.left.toInt().coerceIn(0, bitmap.width - 1)
+        val right = box.right.toInt().coerceIn(left, bitmap.width - 1)
+        val top = box.top.toInt().coerceIn(0, bitmap.height - 1)
+        val bottom = box.bottom.toInt().coerceIn(top, bitmap.height - 1)
+        val stepX = ((right - left) / 12).coerceAtLeast(1)
+        val stepY = ((bottom - top) / 12).coerceAtLeast(1)
+
+        var sumR = 0L
+        var sumG = 0L
+        var sumB = 0L
+        var count = 0
+        var y = top
+        while (y <= bottom) {
+            var x = left
+            while (x <= right) {
+                val pixel = bitmap.getPixel(x, y)
+                sumR += (pixel shr 16) and 0xFF
+                sumG += (pixel shr 8) and 0xFF
+                sumB += pixel and 0xFF
+                count++
+                x += stepX
+            }
+            y += stepY
+        }
+        if (count == 0) return false to Color.BLACK
+
+        val r = (sumR / count).toInt()
+        val g = (sumG / count).toInt()
+        val b = (sumB / count).toInt()
+        val luminance = (r * 299 + g * 587 + b * 114) / 1000
+        return (luminance >= LIGHT_BACKGROUND) to Color.rgb(r, g, b)
     }
 
     // ------------------------------------------------------------- overlay events
@@ -278,6 +390,7 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
     override fun onClear() {
         translationOverlay.clear()
         lastKey = ""
+        baseline = null
         AppState.setStatus("Terjemahan dibersihkan")
     }
 
@@ -387,6 +500,17 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
         private const val CHANNEL_ID = "floattrans_capture"
         private const val NOTIFICATION_ID = 0x5452
         private const val HIDE_DELAY_MS = 140L
+        private const val BASELINE_DELAY_MS = 180L
+
+        /** Page watcher tuning. */
+        private const val MIN_POLL_MS = 500L
+        private const val MAX_POLL_MS = 3000L
+        private const val CHANGE_RATIO = 0.04f
+        private const val SETTLE_RATIO = 0.01f
+        private const val SETTLE_ROUNDS = 6
+        private const val SETTLE_DELAY_MS = 170L
+        private const val SIGNATURE_TOLERANCE = 24
+        private const val LIGHT_BACKGROUND = 145
 
         fun startIntent(context: Context, resultCode: Int, data: Intent): Intent =
             Intent(context, CaptureService::class.java)

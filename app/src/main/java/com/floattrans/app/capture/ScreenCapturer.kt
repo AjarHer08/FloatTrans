@@ -117,6 +117,59 @@ class ScreenCapturer(private val context: Context) {
         }
     }
 
+    /**
+     * Cheap "did the page change?" fingerprint: samples a small luminance grid
+     * straight out of the newest frame's pixel buffer, without copying a full
+     * bitmap. Used by the automatic page/chapter watcher.
+     */
+    suspend fun sampleSignature(
+        cols: Int = 24,
+        rows: Int = 30,
+        timeoutMs: Long = 400L
+    ): IntArray? {
+        val reader = imageReader ?: return null
+        val deadline = System.currentTimeMillis() + timeoutMs
+        var image: Image? = null
+        while (image == null && System.currentTimeMillis() < deadline) {
+            image = runCatching { reader.acquireLatestImage() }.getOrNull()
+            if (image == null) delay(20)
+        }
+        val frame = image ?: return null
+        return try {
+            val plane = frame.planes[0]
+            val buffer = plane.buffer
+            val rowStride = plane.rowStride
+            val pixelStride = plane.pixelStride
+            val limit = buffer.limit()
+            val out = IntArray(cols * rows)
+
+            // Skip the status bar and navigation bar so the clock, battery icon
+            // or gesture hint never look like a new chapter.
+            val top = (height * 0.06f).toInt()
+            val bottom = (height * 0.94f).toInt()
+            val usableHeight = (bottom - top).coerceAtLeast(1)
+
+            for (row in 0 until rows) {
+                val y = top + ((row * usableHeight) + usableHeight / 2) / rows
+                val rowBase = y * rowStride
+                for (col in 0 until cols) {
+                    val x = ((col * width) + width / 2) / cols
+                    val index = rowBase + x * pixelStride
+                    if (index + 2 >= limit) continue
+                    val r = buffer.get(index).toInt() and 0xFF
+                    val g = buffer.get(index + 1).toInt() and 0xFF
+                    val b = buffer.get(index + 2).toInt() and 0xFF
+                    out[row * cols + col] = (r * 77 + g * 150 + b * 29) shr 8
+                }
+            }
+            out
+        } catch (t: Throwable) {
+            null
+        } finally {
+            runCatching { frame.close() }
+        }
+    }
+
     private fun toBitmap(image: Image): Bitmap {
         val plane = image.planes[0]
         val rowStride = plane.rowStride

@@ -32,17 +32,16 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
 
     private val intervalOptions = listOf(
-        1000 to "1 detik",
-        2000 to "2 detik",
-        3000 to "3 detik",
-        5000 to "5 detik",
-        8000 to "8 detik",
-        12000 to "12 detik"
+        600 to "Cepat (0,6 detik)",
+        900 to "Normal (0,9 detik)",
+        1500 to "Hemat baterai (1,5 detik)",
+        2500 to "Sangat hemat (2,5 detik)"
     )
 
     private val styleOptions = listOf(
-        Prefs.STYLE_SOLID to "Padat (kotak gelap)",
-        Prefs.STYLE_OUTLINE to "Garis tepi",
+        Prefs.STYLE_AUTO to "Otomatis (menyatu dengan balon)",
+        Prefs.STYLE_SOLID to "Kotak warna balon",
+        Prefs.STYLE_OUTLINE to "Kotak + garis tepi",
         Prefs.STYLE_NONE to "Tanpa latar (teks saja)"
     )
 

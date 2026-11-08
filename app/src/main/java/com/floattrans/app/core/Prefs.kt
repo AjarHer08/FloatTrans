@@ -6,6 +6,7 @@ import android.content.SharedPreferences
 /** Small typed wrapper around SharedPreferences. Call [init] once from Application. */
 object Prefs {
 
+    const val STYLE_AUTO = "auto"
     const val STYLE_SOLID = "solid"
     const val STYLE_OUTLINE = "outline"
     const val STYLE_NONE = "none"
@@ -36,8 +37,9 @@ object Prefs {
         get() = sp.getString("target_lang", "id") ?: "id"
         set(value) = sp.edit().putString("target_lang", value).apply()
 
+    /** How often the page watcher fingerprints the screen looking for a new page. */
     var intervalMs: Int
-        get() = sp.getInt("interval_ms", 3000)
+        get() = sp.getInt("interval_ms", 700)
         set(value) = sp.edit().putInt("interval_ms", value).apply()
 
     var textSizeSp: Int
@@ -45,7 +47,7 @@ object Prefs {
         set(value) = sp.edit().putInt("text_size_sp", value).apply()
 
     var backgroundStyle: String
-        get() = sp.getString("bg_style", STYLE_SOLID) ?: STYLE_SOLID
+        get() = sp.getString("bg_style", STYLE_AUTO) ?: STYLE_AUTO
         set(value) = sp.edit().putString("bg_style", value).apply()
 
     var showOriginal: Boolean

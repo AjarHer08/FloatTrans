@@ -22,37 +22,36 @@ class TranslateEngine {
     private var translator: Translator? = null
     private var translatorTag: String = ""
 
-    suspend fun translate(
-        lines: List<OcrLine>,
+    suspend fun translateTexts(
+        texts: List<String>,
         sourceSetting: String,
         targetSetting: String
     ): TranslationResult {
-        if (lines.isEmpty()) return TranslationResult(emptyList(), sourceSetting)
+        if (texts.isEmpty()) return TranslationResult(emptyList(), sourceSetting)
 
         val target = if (Languages.isSupported(targetSetting)) targetSetting else "id"
         val source = when {
-            sourceSetting == Languages.AUTO -> detect(lines)
+            sourceSetting == Languages.AUTO -> detect(texts)
             Languages.isSupported(sourceSetting) -> sourceSetting
-            else -> detect(lines)
+            else -> detect(texts)
         }
 
         if (source == target) {
-            return TranslationResult(lines.map { it.text }, source)
+            return TranslationResult(texts, source)
         }
 
         val active = translatorFor(source, target)
         active.downloadModelIfNeeded().await()
 
-        val translated = ArrayList<String>(lines.size)
-        for (line in lines) {
-            val text = runCatching { active.translate(line.text).await() }.getOrDefault(line.text)
-            translated.add(text)
+        val translated = ArrayList<String>(texts.size)
+        for (text in texts) {
+            translated.add(runCatching { active.translate(text).await() }.getOrDefault(text))
         }
         return TranslationResult(translated, source)
     }
 
-    private suspend fun detect(lines: List<OcrLine>): String {
-        val sample = lines.joinToString(" ") { it.text }.take(600)
+    private suspend fun detect(texts: List<String>): String {
+        val sample = texts.joinToString(" ").take(600)
         if (sample.isBlank()) return "en"
         val candidates = runCatching { languageId.identifyPossibleLanguages(sample).await() }
             .getOrDefault(emptyList())
