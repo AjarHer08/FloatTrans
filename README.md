@@ -93,6 +93,7 @@ Build lewat GitHub Actions (otomatis):
 - Model terjemahan diunduh sekali per pasangan bahasa; tanpa internet dan tanpa model, terjemahan gagal (teks asli tetap tampil).
 - OCR terbaik pada teks horizontal. Teks vertikal atau efek tipografi ekstrem bisa salah baca.
 - Jika layar diputar saat sesi berjalan, hentikan dan mulai ulang sesi agar ukuran tangkapan ikut menyesuaikan.
+- APK dari Actions ditandatangani dengan debug keystore yang dibuat ulang di setiap build, sehingga APK baru **tidak bisa** dipasang menimpa versi lama: uninstall dulu, atau isi 4 secret keystore agar CI menghasilkan APK release bertanda tangan tetap.
 - Android versi baru menampilkan chip "sedang menangkap layar"; menekan tombol berhenti di situ akan menghentikan sesi FloatTrans juga.
 
 ## Privasi
