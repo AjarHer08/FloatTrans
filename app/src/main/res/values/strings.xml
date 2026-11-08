@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FloatTrans</string>
+    <string name="tagline">Penerjemah melayang otomatis untuk manhwa, manga, manhua, dan komik berbahasa Inggris.</string>
+
+    <string name="status">Status</string>
+    <string name="status_idle">Belum aktif</string>
+    <string name="permission_overlay_granted">Izin overlay: aktif</string>
+    <string name="permission_overlay_missing">Izin overlay: belum aktif</string>
+    <string name="open_overlay_settings">Izinkan tampil di atas aplikasi lain</string>
+    <string name="start">Mulai</string>
+    <string name="stop">Hentikan</string>
+
+    <string name="section_language">Bahasa &amp; OCR</string>
+    <string name="ocr_script">Jenis teks di layar</string>
+    <string name="source_language">Bahasa sumber</string>
+    <string name="target_language">Terjemahkan ke</string>
+
+    <string name="section_display">Tampilan terjemahan</string>
+    <string name="text_size">Ukuran teks: %1$d sp</string>
+    <string name="interval">Interval mode otomatis</string>
+    <string name="background_style">Latar kotak terjemahan</string>
+    <string name="show_original">Tampilkan teks asli di bawah terjemahan</string>
+
+    <string name="section_result">Hasil terakhir</string>
+    <string name="result_empty">Belum ada terjemahan. Tekan tombol Mulai, lalu buka aplikasi baca komik Anda.</string>
+
+    <string name="help_title">Cara pakai</string>
+    <string name="help_body">1. Aktifkan izin overlay, lalu tekan Mulai dan setujui permintaan tangkap layar Android.\n\n2. Buka aplikasi manhwa/manga/manhua/komik Inggris Anda. Gelembung 文A akan melayang di atas layar.\n\n3. Ketuk gelembung untuk menerjemahkan sekali, atau biarkan mode otomatis bekerja setiap beberapa detik. Tahan gelembung untuk membuka menu (matikan otomatis, bersihkan, atau hentikan).\n\n4. Terjemahan digambar langsung menimpa balon teks aslinya.\n\nCatatan: konten berproteksi DRM (mis. video streaming berbayar) tidak dapat ditangkap. Model terjemahan bahasa baru diunduh sekali saat pertama dipakai sehingga butuh internet.</string>
+
+    <string name="notification_channel">Penangkapan layar</string>
+    <string name="notification_title">FloatTrans aktif</string>
+    <string name="notification_text">Terjemahan melayang sedang berjalan</string>
+    <string name="notification_action_translate">Terjemahkan</string>
+    <string name="notification_action_stop">Hentikan</string>
+</resources>

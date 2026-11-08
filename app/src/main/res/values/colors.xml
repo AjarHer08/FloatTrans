@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand">#FF5B4BFF</color>
+    <color name="brand_dark">#FF3A2ECC</color>
+    <color name="bubble_bg">#F2202124</color>
+    <color name="bubble_stroke">#66FFFFFF</color>
+    <color name="bubble_stroke_auto">#FF4ADE80</color>
+</resources>
