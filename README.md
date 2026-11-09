@@ -33,7 +33,7 @@ Cocok untuk manhwa (Korea), manga (Jepang), manhua (Tionghoa), dan komik versi I
 
 ## Instalasi
 
-1. Unduh APK dari tab **Releases** di repo ini, atau dari **Actions → Build APK → artifact** pada build terakhir.
+1. Unduh APK dari tab **[Releases](https://github.com/AjarHer08/FloatTrans/releases)**.
 2. Pilih APK sesuai perangkat:
    - `...-arm64-v8a-...apk` — hampir semua HP Android modern (paling disarankan)
    - `...-armeabi-v7a-...apk` — HP 32-bit / Android lama
@@ -41,7 +41,12 @@ Cocok untuk manhwa (Korea), manga (Jepang), manhua (Tionghoa), dan komik versi I
    - `...-universal-...apk` — cadangan untuk semua perangkat
 3. Izinkan "install dari sumber tidak dikenal" jika diminta, lalu pasang.
 4. Buka FloatTrans → **Izinkan tampil di atas aplikasi lain** → **Mulai** → setujui dialog tangkap layar.
-5. Pembaruan: tekan **Periksa pembaruan** di layar utama (sekali juga diperiksa otomatis saat aplikasi dibuka). Izinkan "Instal aplikasi tidak dikenal" untuk FloatTrans bila diminta.
+
+### Pembaruan
+
+- Tekan **Periksa pembaruan** di layar utama (otomatis dicek sekali saat aplikasi dibuka). Aplikasi memilih APK sesuai arsitektur perangkat, mengunduhnya, lalu membuka pemasang Android.
+- **Agar pembaruan bisa dipasang menimpa tanpa uninstall**, repo harus memakai keystore rilis tetap — ikuti [docs/signing-rilis.md](docs/signing-rilis.md). Tanpa itu, APK dari CI bertanda tangan debug sementara dan Android menolak menimpanya (aplikasi akan menampilkan panduan pasang ulang).
+- Jika masih memakai APK debug lama: uninstall sekali, pasang APK `*-release-*` bertanda tangan tetap, lalu pembaruan berikutnya bisa langsung menimpa.
 
 ## Cara pakai
 
@@ -88,11 +93,11 @@ Build lewat GitHub Actions (otomatis):
 - Push tag `vX.Y.Z` → APK otomatis dilampirkan ke GitHub Release:
 
   ```bash
-  git tag v1.2.1
-  git push origin v1.2.1
+  git tag v1.2.2
+  git push origin v1.2.2
   ```
 
-- APK release bertanda tangan resmi (opsional): tambahkan secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Tanpa secret ini CI tetap menghasilkan APK debug yang bisa dipasang.
+- **Keystore rilis tetap (disarankan):** tambahkan 4 secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` → CI menerbitkan APK `*-release-*` bertanda tangan tetap yang bisa dipasang menimpa versi lama. Panduan lengkap + skrip pembuat keystore: [docs/signing-rilis.md](docs/signing-rilis.md). Tanpa secret ini (atau pada pull request) CI menghasilkan APK debug.
 
 ## Batasan yang perlu diketahui
 
@@ -100,7 +105,7 @@ Build lewat GitHub Actions (otomatis):
 - Mesin **Google online** butuh internet; tanpa koneksi aplikasi otomatis memakai ML Kit offline (kualitas lebih rendah, dan model bahasa baru diunduh sekali per pasangan bahasa).
 - OCR terbaik pada teks horizontal. Teks vertikal atau efek tipografi ekstrem bisa salah baca.
 - Jika layar diputar saat sesi berjalan, hentikan dan mulai ulang sesi agar ukuran tangkapan ikut menyesuaikan.
-- APK dari Actions ditandatangani dengan debug keystore yang dibuat ulang di setiap build, sehingga APK baru **tidak bisa** dipasang menimpa versi lama: uninstall dulu, atau isi 4 secret keystore agar CI menghasilkan APK release bertanda tangan tetap.
+- APK debug dari CI (tanpa keystore tetap) ditandatangani dengan debug key sementara dan **tidak bisa** dipasang menimpa versi lama. Gunakan APK `*-release-*` dari keystore tetap agar pembaruan menimpa — lihat [docs/signing-rilis.md](docs/signing-rilis.md).
 - Android versi baru menampilkan chip "sedang menangkap layar"; menekan tombol berhenti di situ akan menghentikan sesi FloatTrans juga.
 
 ## Privasi

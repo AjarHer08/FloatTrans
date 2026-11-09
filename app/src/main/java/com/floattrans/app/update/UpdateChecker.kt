@@ -44,19 +44,28 @@ object UpdateChecker {
         val version = json.optString("tag_name").trim().removePrefix("v").removePrefix("V")
         if (version.isBlank()) return null
 
-        var matching: JSONObject? = null
-        var universal: JSONObject? = null
+        var matchingRelease: JSONObject? = null
+        var matchingDebug: JSONObject? = null
+        var universalRelease: JSONObject? = null
+        var universalDebug: JSONObject? = null
         val assets = json.optJSONArray("assets")
         if (assets != null) {
             for (index in 0 until assets.length()) {
                 val asset = assets.optJSONObject(index) ?: continue
                 val name = asset.optString("name")
                 if (!name.endsWith(".apk", ignoreCase = true)) continue
-                if (name.contains("universal", ignoreCase = true)) universal = asset
-                if (matchesAbi(name)) matching = asset
+                val isRelease = name.contains("release", ignoreCase = true)
+                if (name.contains("universal", ignoreCase = true)) {
+                    if (isRelease) universalRelease = asset else universalDebug = asset
+                }
+                if (matchesAbi(name)) {
+                    if (isRelease) matchingRelease = asset else matchingDebug = asset
+                }
             }
         }
-        val chosen = matching ?: universal
+        // Prefer a consistently signed release APK (updateable over installs that
+        // already use the same release key); fall back to debug/universal.
+        val chosen = matchingRelease ?: universalRelease ?: matchingDebug ?: universalDebug
 
         return UpdateInfo(
             versionName = version,
@@ -93,7 +102,10 @@ object UpdateChecker {
             .trim()
 
         val abi = abiToken()
-        val apkName = abi?.let { "FloatTrans-$it-debug-$version.apk" }
+        // The feed does not list assets. Prefer the signed release naming (used
+        // once a fixed keystore is configured); if that file is absent the
+        // download step will fail and the UI opens the release page.
+        val apkName = abi?.let { "FloatTrans-$it-release-$version.apk" }
         val apkUrl = apkName?.let { pageUrl.replace("/tag/", "/download/") + "/$it" }
 
         return UpdateInfo(

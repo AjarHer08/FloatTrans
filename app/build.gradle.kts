@@ -3,8 +3,8 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.2.2"
-val appVersionCode = ((project.findProperty("appVersionCode") as String?) ?: "5").toInt()
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.3.0"
+val appVersionCode = ((project.findProperty("appVersionCode") as String?) ?: "6").toInt()
 
 // Optional release signing, injected by CI from repository secrets.
 val keystorePath = System.getenv("FLOATTRANS_KEYSTORE_PATH")

@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: Assemble debug APKs
+    name: Build APK
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -31,7 +31,7 @@ jobs:
           distribution: temurin
           java-version: "17"
 
-      # The hosted runner ships an Android SDK. Android-actions/setup-android
+      # The hosted runner ships an Android SDK. android-actions/setup-android
       # fails on some image versions, so prepare the SDK directly and only
       # install what is missing (platform 35 / build-tools 35).
       - name: Set up Android SDK
@@ -71,29 +71,16 @@ jobs:
           echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
           echo "Building version ${VERSION} (code ${GITHUB_RUN_NUMBER})"
 
-      - name: Build debug APKs
-        run: >
-          ./gradlew --no-daemon assembleDebug
-          -PappVersionName=${{ steps.version.outputs.name }}
-          -PappVersionCode=${{ steps.version.outputs.code }}
-
-      - name: Prepare debug artifacts
-        run: |
-          mkdir -p dist
-          for apk in app/build/outputs/apk/debug/*.apk; do
-            base="$(basename "${apk}" .apk)"
-            cp "${apk}" "dist/FloatTrans-${base#app-}-${{ steps.version.outputs.name }}.apk"
-          done
-          ls -lh dist
-
-      # Optional: produce a release-signed APK when signing secrets exist.
-      # Add ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
-      # ANDROID_KEY_ALIAS and ANDROID_KEY_PASSWORD in repository secrets.
+      # --- Signed release APKs (preferred, updateable) -----------------------
+      # Requires the 4 repository secrets described in docs/signing-rilis.md.
+      # With a fixed keystore the same signature is used every time, so Android
+      # allows installing a new version over the previous one.
       - name: Decode upload keystore
         if: env.HAS_SIGNING_KEY == 'true' && github.event_name != 'pull_request'
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
+          set -euo pipefail
           echo "${KEYSTORE_BASE64}" | base64 -d > "$RUNNER_TEMP/release.jks"
           ls -l "$RUNNER_TEMP/release.jks"
 
@@ -109,10 +96,34 @@ jobs:
           -PappVersionName=${{ steps.version.outputs.name }}
           -PappVersionCode=${{ steps.version.outputs.code }}
 
-      - name: Prepare release artifacts
+      - name: Prepare signed release artifacts
         if: env.HAS_SIGNING_KEY == 'true' && github.event_name != 'pull_request'
         run: |
+          set -euo pipefail
+          mkdir -p dist
           for apk in app/build/outputs/apk/release/*.apk; do
+            base="$(basename "${apk}" .apk)"
+            cp "${apk}" "dist/FloatTrans-${base#app-}-${{ steps.version.outputs.name }}.apk"
+          done
+          ls -lh dist
+
+      # --- Debug APKs (fallback when no fixed signing key is configured) -----
+      # Debug APKs are signed with a temporary debug key, so they CANNOT be
+      # installed over a previous build. Use the signing setup in
+      # docs/signing-rilis.md to make releases updateable.
+      - name: Build debug APKs
+        if: env.HAS_SIGNING_KEY != 'true' || github.event_name == 'pull_request'
+        run: >
+          ./gradlew --no-daemon assembleDebug
+          -PappVersionName=${{ steps.version.outputs.name }}
+          -PappVersionCode=${{ steps.version.outputs.code }}
+
+      - name: Prepare debug artifacts
+        if: env.HAS_SIGNING_KEY != 'true' || github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for apk in app/build/outputs/apk/debug/*.apk; do
             base="$(basename "${apk}" .apk)"
             cp "${apk}" "dist/FloatTrans-${base#app-}-${{ steps.version.outputs.name }}.apk"
           done
