@@ -85,11 +85,11 @@ Build lokal (butuh JDK 17 + Android SDK 35):
 Build lewat GitHub Actions (otomatis):
 
 - Setiap push ke `main` / `master`, pull request, atau manual `workflow_dispatch` → APK diunggah sebagai artifact.
-- Push tag `v1.2.0` → APK otomatis dilampirkan ke GitHub Release:
+- Push tag `vX.Y.Z` → APK otomatis dilampirkan ke GitHub Release:
 
   ```bash
-  git tag v1.2.0
-  git push origin v1.2.0
+  git tag v1.2.1
+  git push origin v1.2.1
   ```
 
 - APK release bertanda tangan resmi (opsional): tambahkan secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Tanpa secret ini CI tetap menghasilkan APK debug yang bisa dipasang.

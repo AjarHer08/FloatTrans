@@ -49,6 +49,8 @@
     <string name="update_no_apk">Belum ada APK di rilis ini. Membuka halaman rilis…</string>
     <string name="update_notes_empty">Tidak ada catatan rilis.</string>
     <string name="update_open_failed">Tidak bisa membuka browser.</string>
+    <string name="update_reinstall_title">Perlu pasang ulang</string>
+    <string name="update_reinstall_message">APK pembaruan ditandatangani dengan kunci berbeda dari versi yang terpasang (APK dari GitHub Actions memakai kunci debug baru tiap build), jadi Android menolak menimpanya.\n\nHapus (uninstall) FloatTrans versi lama, lalu pasang APK baru dari halaman rilis. Pengaturan dan izin akan ter-reset.</string>
 
     <string name="notification_channel">Penangkapan layar</string>
     <string name="notification_title">FloatTrans aktif</string>

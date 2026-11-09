@@ -394,6 +394,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun installApk(file: File) {
+        if (signatureMismatch(file)) {
+            showReinstallDialog()
+            return
+        }
         val uri = FileProvider.getUriForFile(this, "$packageName.updates", file)
         val intent = Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -401,6 +405,32 @@ class MainActivity : AppCompatActivity() {
         }
         runCatching { startActivity(intent) }
             .onFailure { toast(getString(R.string.update_install_failed)) }
+    }
+
+    /**
+     * APKs built by CI are signed with a fresh debug key each time, so Android
+     * refuses to install them over an existing copy. Detect that up front and
+     * explain it instead of letting the installer show a cryptic error.
+     */
+    @Suppress("DEPRECATION")
+    private fun signatureMismatch(file: File): Boolean = runCatching {
+        val archive = packageManager.getPackageArchiveInfo(
+            file.absolutePath,
+            PackageManager.GET_SIGNATURES
+        ) ?: return@runCatching false
+        val installed = packageManager.getPackageInfo(packageName, PackageManager.GET_SIGNATURES)
+        val newSignature = archive.signatures?.firstOrNull()?.toCharsString()
+        val oldSignature = installed.signatures?.firstOrNull()?.toCharsString()
+        newSignature != null && oldSignature != null && newSignature != oldSignature
+    }.getOrDefault(false)
+
+    private fun showReinstallDialog() {
+        MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_reinstall_title)
+            .setMessage(R.string.update_reinstall_message)
+            .setPositiveButton(R.string.update_open_browser) { _, _ -> openUrl(RELEASES_URL) }
+            .setNegativeButton(R.string.update_later, null)
+            .show()
     }
 
     private fun canInstallPackages(): Boolean =
@@ -426,5 +456,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun toast(message: String) {
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
+    private companion object {
+        const val RELEASES_URL = "https://github.com/AjarHer08/FloatTrans/releases/latest"
     }
 }
