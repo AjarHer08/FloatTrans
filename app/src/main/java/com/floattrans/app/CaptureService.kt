@@ -283,7 +283,8 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
                 translateEngine.translateTexts(
                     groups.map { it.text },
                     Prefs.sourceLang,
-                    Prefs.targetLang
+                    Prefs.targetLang,
+                    Prefs.translationEngine
                 )
             }
 
@@ -302,8 +303,9 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
             }
             translationOverlay.render(items, captureWidth, captureHeight)
             AppState.setResult(result.lines.joinToString("\n"))
+            val engineLabel = if (result.engine == "online") "Google" else "offline"
             AppState.setStatus(
-                "${groups.size} balon — ${Languages.label(result.sourceLang)} → " +
+                "${groups.size} balon ($engineLabel) — ${Languages.label(result.sourceLang)} → " +
                     Languages.label(Prefs.targetLang)
             )
         } catch (cancelled: CancellationException) {
@@ -338,37 +340,48 @@ class CaptureService : Service(), BubbleOverlay.Callbacks, ControlPanel.Callback
         return bitmap
     }
 
-    /** Average colour of the OCR box: picks black-on-light or white-on-dark lettering. */
+    /**
+     * Colour of the balloon behind the lettering. Uses the dominant colour of the
+     * sampled area instead of a plain average, so the dark glyphs themselves do
+     * not drag the result towards grey — the patch we paint over the original
+     * text then blends into the balloon instead of looking like a grey label.
+     */
     private fun sampleRegion(bitmap: Bitmap, box: RectF): Pair<Boolean, Int> {
-        val left = box.left.toInt().coerceIn(0, bitmap.width - 1)
-        val right = box.right.toInt().coerceIn(left, bitmap.width - 1)
-        val top = box.top.toInt().coerceIn(0, bitmap.height - 1)
-        val bottom = box.bottom.toInt().coerceIn(top, bitmap.height - 1)
-        val stepX = ((right - left) / 12).coerceAtLeast(1)
-        val stepY = ((bottom - top) / 12).coerceAtLeast(1)
+        val insetX = (box.width() * 0.12f).toInt()
+        val insetY = (box.height() * 0.12f).toInt()
+        val left = (box.left + insetX).toInt().coerceIn(0, bitmap.width - 1)
+        val right = (box.right - insetX).toInt().coerceIn(left, bitmap.width - 1)
+        val top = (box.top + insetY).toInt().coerceIn(0, bitmap.height - 1)
+        val bottom = (box.bottom - insetY).toInt().coerceIn(top, bitmap.height - 1)
+        val stepX = ((right - left) / 14).coerceAtLeast(1)
+        val stepY = ((bottom - top) / 14).coerceAtLeast(1)
 
-        var sumR = 0L
-        var sumG = 0L
-        var sumB = 0L
-        var count = 0
+        // bucket -> [count, sumR, sumG, sumB]
+        val buckets = HashMap<Int, IntArray>()
         var y = top
         while (y <= bottom) {
             var x = left
             while (x <= right) {
                 val pixel = bitmap.getPixel(x, y)
-                sumR += (pixel shr 16) and 0xFF
-                sumG += (pixel shr 8) and 0xFF
-                sumB += pixel and 0xFF
-                count++
+                val r = (pixel shr 16) and 0xFF
+                val g = (pixel shr 8) and 0xFF
+                val b = pixel and 0xFF
+                val bucket = ((r shr 4) shl 8) or ((g shr 4) shl 4) or (b shr 4)
+                val entry = buckets.getOrPut(bucket) { IntArray(4) }
+                entry[0]++
+                entry[1] += r
+                entry[2] += g
+                entry[3] += b
                 x += stepX
             }
             y += stepY
         }
-        if (count == 0) return false to Color.BLACK
 
-        val r = (sumR / count).toInt()
-        val g = (sumG / count).toInt()
-        val b = (sumB / count).toInt()
+        val dominant = buckets.values.maxByOrNull { it[0] } ?: return false to Color.BLACK
+        val count = dominant[0].coerceAtLeast(1)
+        val r = dominant[1] / count
+        val g = dominant[2] / count
+        val b = dominant[3] / count
         val luminance = (r * 299 + g * 587 + b * 114) / 1000
         return (luminance >= LIGHT_BACKGROUND) to Color.rgb(r, g, b)
     }

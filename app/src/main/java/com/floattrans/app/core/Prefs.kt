@@ -11,6 +11,11 @@ object Prefs {
     const val STYLE_OUTLINE = "outline"
     const val STYLE_NONE = "none"
 
+    /** Online-first with offline fallback. */
+    const val ENGINE_SMART = "smart"
+    const val ENGINE_ONLINE = "online"
+    const val ENGINE_OFFLINE = "offline"
+
     private const val FILE = "floattrans_prefs"
 
     private lateinit var sp: SharedPreferences
@@ -53,6 +58,10 @@ object Prefs {
     var showOriginal: Boolean
         get() = sp.getBoolean("show_original", false)
         set(value) = sp.edit().putBoolean("show_original", value).apply()
+
+    var translationEngine: String
+        get() = sp.getString("translation_engine", ENGINE_SMART) ?: ENGINE_SMART
+        set(value) = sp.edit().putString("translation_engine", value).apply()
 
     var autoMode: Boolean
         get() = sp.getBoolean("auto_mode", true)

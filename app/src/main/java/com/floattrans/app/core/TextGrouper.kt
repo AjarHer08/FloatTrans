@@ -24,11 +24,11 @@ object TextGrouper {
 
     private const val MAX_LINES = 10
     private const val MAX_CHARS = 480
-    private const val MAX_GAP_FACTOR = 0.85f
+    private const val MAX_GAP_FACTOR = 1.05f
     private const val MAX_OVERLAP_GAP_FACTOR = 1.4f
     private const val MIN_HORIZONTAL_OVERLAP = 0.35f
-    private const val MIN_HEIGHT_RATIO = 0.5f
-    private const val MAX_HEIGHT_RATIO = 2.0f
+    private const val MIN_HEIGHT_RATIO = 0.4f
+    private const val MAX_HEIGHT_RATIO = 2.2f
 
     fun group(lines: List<OcrLine>): List<TextGroup> {
         if (lines.isEmpty()) return emptyList()

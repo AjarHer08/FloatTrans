@@ -18,9 +18,12 @@ import kotlin.math.min
 
 /**
  * Paints translated text where the original lettering was, styled like comic
- * typesetting rather than like a UI label: a comic lettering face, text centred
- * and fitted inside the bubble, black ink on light bubbles and white ink with a
- * dark contour on dark ones.
+ * typesetting rather than like a UI label.
+ *
+ * Two passes are used on purpose: first every balloon gets an opaque patch of
+ * its own background colour (so no original glyph is left peeking through),
+ * then all translations are drawn on top. Otherwise a patch drawn later could
+ * cover a translation drawn earlier when two balloons are close together.
  */
 class TranslationCanvasView(context: Context) : View(context) {
 
@@ -31,15 +34,17 @@ class TranslationCanvasView(context: Context) : View(context) {
         val box: RectF,
         /** True when the bubble behind the text is light. */
         val lightBackground: Boolean = false,
-        /** Average colour of the bubble, used by the solid/outline styles. */
+        /** Dominant colour of the bubble, used to paint over the original text. */
         val background: Int = Color.BLACK
     )
+
+    private class Frame(val item: Item, val box: RectF)
 
     private val items = mutableListOf<Item>()
     private var captureWidth = 1
     private var captureHeight = 1
 
-    private var textSizeSp = 16f
+    private var textSizeSp = 14f
     private var style = Prefs.STYLE_AUTO
     private var showOriginal = false
 
@@ -63,7 +68,7 @@ class TranslationCanvasView(context: Context) : View(context) {
         color = 0x99FFFFFF.toInt()
     }
 
-    private val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
     }
 
@@ -99,113 +104,120 @@ class TranslationCanvasView(context: Context) : View(context) {
         val scaleX = width.toFloat() / captureWidth
         val scaleY = height.toFloat() / captureHeight
 
+        val frames = ArrayList<Frame>(items.size)
         for (item in items) {
-            val original = RectF(
+            val raw = RectF(
                 item.box.left * scaleX,
                 item.box.top * scaleY,
                 item.box.right * scaleX,
                 item.box.bottom * scaleY
             )
-            if (original.width() < 8f || original.height() < 8f) continue
+            if (raw.width() < 6f || raw.height() < 6f) continue
+            val box = expanded(raw)
+            if (box.width() < 8f || box.height() < 8f) continue
+            frames.add(Frame(item, box))
+        }
+        if (frames.isEmpty()) return
 
-            // OCR boxes hug the glyphs; balloons have breathing room. Growing the
-            // box slightly lets the translation fill the balloon like real lettering.
-            val padX = min(6f * density + original.width() * 0.06f, 16f * density)
-            val padY = min(5f * density + original.height() * 0.08f, 12f * density)
-            val box = RectF(
-                original.left - padX,
-                original.top - padY,
-                original.right + padX,
-                original.bottom + padY
-            )
-            box.left = box.left.coerceIn(0f, width.toFloat())
-            box.right = box.right.coerceIn(0f, width.toFloat())
-            box.top = box.top.coerceIn(0f, height.toFloat())
-            box.bottom = box.bottom.coerceIn(0f, height.toFloat())
-            if (box.width() < 10f || box.height() < 10f) continue
+        for (frame in frames) paintCover(canvas, frame.item, frame.box)
+        for (frame in frames) drawText(canvas, frame.item, frame.box)
+    }
 
-            drawItem(canvas, item, box)
+    /**
+     * OCR boxes hug the glyphs while balloons have breathing room. The patch is
+     * grown a little so that wrapped lines we did not recognise — or glyph edges
+     * clipped by the OCR box — are covered as well.
+     */
+    private fun expanded(raw: RectF): RectF {
+        val padX = (raw.width() * 0.07f).coerceIn(2f * density, 10f * density)
+        val padY = (raw.height() * 0.22f).coerceIn(3f * density, 12f * density)
+        return RectF(
+            (raw.left - padX).coerceAtLeast(0f),
+            (raw.top - padY).coerceAtLeast(0f),
+            (raw.right + padX).coerceAtMost(width.toFloat()),
+            (raw.bottom + padY).coerceAtMost(height.toFloat())
+        )
+    }
+
+    private fun paintCover(canvas: Canvas, item: Item, box: RectF) {
+        if (style == Prefs.STYLE_NONE) return
+        val radius = min(box.height() / 2.4f, 16f * density)
+        fillPaint.color = withAlpha(item.background, 255)
+        canvas.drawRoundRect(box, radius, radius, fillPaint)
+        if (style == Prefs.STYLE_OUTLINE) {
+            borderPaint.color = if (item.lightBackground) 0x33000000 else 0x66FFFFFF
+            canvas.drawRoundRect(box, radius, radius, borderPaint)
         }
     }
 
-    private fun drawItem(canvas: Canvas, item: Item, box: RectF) {
+    private fun drawText(canvas: Canvas, item: Item, box: RectF) {
         val showSource = showOriginal && item.original.isNotBlank() &&
             !item.original.equals(item.translated, ignoreCase = true)
 
-        val textArea = if (showSource) box.height() * 0.78f else box.height()
+        val inner = RectF(box).apply { inset(2f * density, 1.5f * density) }
+        val textArea = if (showSource) inner.height() * 0.78f else inner.height()
 
-        // Start from a scale that fills the balloon, then shrink until it fits.
-        val preferred = min(box.height(), box.width() * 0.52f)
-            .coerceAtMost(textSizeSp * spScale * 2.4f)
-            .coerceAtLeast(9f * density)
+        val preferred = min(inner.height(), inner.width() * 0.62f)
+            .coerceAtMost(textSizeSp * spScale * 2.2f)
+            .coerceAtLeast(8f * density)
 
+        val availableWidth = inner.width().toInt().coerceAtLeast(1)
         var size = preferred
-        var layout = layoutOf(item.translated, size, box.width(), textPaint)
+        var layout = layoutOf(item.translated, size, availableWidth, textPaint)
         var guard = 0
-        while (guard++ < 20 && layout.height > textArea) {
+        while (guard++ < 24 && layout.height > textArea) {
             size *= 0.85f
-            if (size < 7f * density) break
-            layout = layoutOf(item.translated, size, box.width(), textPaint)
+            if (size < 6f * density) break
+            layout = layoutOf(item.translated, size, availableWidth, textPaint)
         }
 
-        val radius = min(box.height() / 2.6f, 12f * density)
-        when (style) {
-            Prefs.STYLE_SOLID -> {
-                backgroundPaint.color = withAlpha(item.background, 0xF0)
-                canvas.drawRoundRect(box, radius, radius, backgroundPaint)
-            }
-
-            Prefs.STYLE_OUTLINE -> {
-                backgroundPaint.color = withAlpha(item.background, 0xF0)
-                canvas.drawRoundRect(box, radius, radius, backgroundPaint)
-                borderPaint.color =
-                    if (item.lightBackground) 0x33000000 else 0x59FFFFFF
-                canvas.drawRoundRect(box, radius, radius, borderPaint)
-            }
-
-            else -> Unit
-        }
-
+        val darkBackground = !item.lightBackground
         val ink = if (item.lightBackground) 0xFF111111.toInt() else 0xFFFFFFFF.toInt()
-        val contour = if (item.lightBackground) 0xCCFFFFFF.toInt() else 0xD9000000.toInt()
+        val contour = when {
+            style == Prefs.STYLE_NONE || darkBackground -> 0xE6000000.toInt()
+            else -> 0x00000000
+        }
 
         textPaint.textSize = size
         textPaint.color = ink
-        originalPaint.textSize = size * 0.66f
-        originalPaint.color = if (item.lightBackground) 0x99111111.toInt() else 0x99FFFFFF.toInt()
 
         val contentHeight = layout.height +
-            if (showSource) 2f * density + originalPaint.textSize * 1.25f else 0f
-        var top = box.centerY() - contentHeight / 2f
-        if (top < box.top) top = box.top
-        if (top + contentHeight > box.bottom) top = box.bottom - contentHeight
+            if (showSource) 2f * density + size * 0.66f * 1.25f else 0f
+        var top = inner.centerY() - contentHeight / 2f
+        if (top < inner.top) top = inner.top
+        if (top + contentHeight > inner.bottom) top = inner.bottom - contentHeight
 
         canvas.save()
-        canvas.clipRect(box)
-        canvas.translate(box.left, top)
+        canvas.clipRect(inner)
+        canvas.translate(inner.left, top)
 
-        // Contour first, then the fill, so light text stays readable on artwork.
-        textPaint.style = Paint.Style.STROKE
-        textPaint.strokeWidth = (size * 0.085f).coerceAtLeast(0.7f * density)
-        textPaint.strokeJoin = Paint.Join.ROUND
-        textPaint.color = contour
-        layout.draw(canvas)
+        if (contour != 0) {
+            textPaint.style = Paint.Style.STROKE
+            textPaint.strokeWidth = (size * 0.09f).coerceAtLeast(0.7f * density)
+            textPaint.strokeJoin = Paint.Join.ROUND
+            textPaint.color = contour
+            layout.draw(canvas)
+        }
         textPaint.style = Paint.Style.FILL
         textPaint.color = ink
         layout.draw(canvas)
 
         if (showSource) {
-            val source = layoutOf(item.original, originalPaint.textSize, box.width(), originalPaint)
+            val sourceSize = size * 0.66f
+            originalPaint.textSize = sourceSize
+            originalPaint.color =
+                if (item.lightBackground) 0x99111111.toInt() else 0x99FFFFFF.toInt()
+            val source = layoutOf(item.original, sourceSize, availableWidth, originalPaint)
             canvas.translate(0f, layout.height + 2f * density)
             source.draw(canvas)
         }
         canvas.restore()
     }
 
-    private fun layoutOf(text: String, size: Float, width: Float, paint: TextPaint): StaticLayout {
+    private fun layoutOf(text: String, size: Float, width: Int, paint: TextPaint): StaticLayout {
         paint.textSize = size
         return StaticLayout.Builder
-            .obtain(text, 0, text.length, paint, width.toInt().coerceAtLeast(1))
+            .obtain(text, 0, text.length, paint, width)
             .setAlignment(Layout.Alignment.ALIGN_CENTER)
             .setIncludePad(false)
             .setLineSpacing(0f, 1.06f)

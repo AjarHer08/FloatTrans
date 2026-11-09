@@ -15,12 +15,14 @@ Cocok untuk manhwa (Korea), manga (Jepang), manhua (Tionghoa), dan komik versi I
 - **Otomatis saat pindah halaman/chapter** — mode otomatis memantau perubahan layar (bukan timer OCR), jadi begitu Anda swipe ke halaman berikutnya, scroll webtoon, atau masuk chapter baru, terjemahan muncul sendiri tanpa menekan apa pun. Halaman yang masih dimuat diberi jeda sebentar agar tidak di-OCR setengah jadi.
 - **Overlay melayang** yang bisa digeser, tanpa mengganggu aplikasi baca komik di belakangnya.
 - **Terjemahan menimpa balon teks** — baris OCR digabung per balon lalu diterjemahkan sebagai satu kalimat, agar hasilnya utuh.
-- **Gaya lettering komik** (bawaan "Otomatis"): font komik (Comic Neue), teks rata tengah dan dipaskan ke dalam balon, tinta hitam pada balon terang dan tinta putih bergaris tepi pada balon gelap. Tersedia juga gaya kotak warna balon, kotak + garis tepi, atau tanpa latar.
+- **Gaya lettering komik** (bawaan "Otomatis"): font komik (Comic Neue), teks rata tengah dan dipaskan ke dalam balon, tinta hitam pada balon terang dan tinta putih bergaris tepi pada balon gelap. Balon asli ditutup dengan warna balon itu sendiri, jadi sisa huruf aslinya tidak tembus. Tersedia juga gaya kotak warna balon, kotak + garis tepi, atau tanpa latar.
+- **Mesin terjemahan bisa dipilih**: Google online (paling akurat untuk Korea/Tionghoa/Jepang), otomatis (Google dulu, cadangan offline ML Kit), atau offline penuh.
+- **Cek pembaruan bawaan**: tombol Periksa pembaruan membaca GitHub Releases, mengunduh APK sesuai arsitektur HP, lalu membuka pemasang Android — tanpa perlu ke browser.
 - **Deteksi aksara otomatis** (Latin / kana / hangul / hanzi) atau pilih manual agar lebih cepat.
 - **Deteksi bahasa otomatis** + pilihan bahasa target (Indonesia sebagai bawaan).
 - **Menu cepat** saat gelembung ditahan: terjemahkan sekarang, matikan mode otomatis, bersihkan, buka pengaturan, hentikan sesi.
 - **Kecepatan deteksi halaman, ukuran teks, dan tampilan teks asli** bisa diatur.
-- Semua proses berjalan **on-device**; tangkapan layar tidak pernah dikirim ke mana pun.
+- OCR dan pengenalan bahasa berjalan **on-device**. Tangkapan layar tidak pernah dikirim ke mana pun; pada mesin online hanya teks hasil OCR yang dikirim ke Google untuk diterjemahkan.
 
 ## Persyaratan
 
@@ -39,6 +41,7 @@ Cocok untuk manhwa (Korea), manga (Jepang), manhua (Tionghoa), dan komik versi I
    - `...-universal-...apk` — cadangan untuk semua perangkat
 3. Izinkan "install dari sumber tidak dikenal" jika diminta, lalu pasang.
 4. Buka FloatTrans → **Izinkan tampil di atas aplikasi lain** → **Mulai** → setujui dialog tangkap layar.
+5. Pembaruan: tekan **Periksa pembaruan** di layar utama (sekali juga diperiksa otomatis saat aplikasi dibuka). Izinkan "Instal aplikasi tidak dikenal" untuk FloatTrans bila diminta.
 
 ## Cara pakai
 
@@ -47,6 +50,7 @@ Cocok untuk manhwa (Korea), manga (Jepang), manhua (Tionghoa), dan komik versi I
 3. Pindah halaman, scroll webtoon, atau buka chapter berikutnya — terjemahan baru muncul sendiri (mode otomatis).
 4. Ketuk gelembung = terjemahkan ulang sekali. Tahan gelembung = menu (mode otomatis, bersihkan, pengaturan, hentikan).
 5. Lingkaran hijau pada gelembung berarti mode otomatis aktif.
+6. Jika hasil terasa kurang tepat, pilih **Mesin terjemahan → Google online** agar konteks kalimat antar balon ikut diperhitungkan.
 
 Tips akurasi:
 
@@ -62,9 +66,10 @@ Tips akurasi:
 | Tangkap layar & sidik jari perubahan halaman | `app/src/main/java/com/floattrans/app/capture/ScreenCapturer.kt` |
 | OCR multi-aksara + auto-deteksi | `app/src/main/java/com/floattrans/app/core/OcrEngine.kt` |
 | Penggabungan baris OCR per balon | `app/src/main/java/com/floattrans/app/core/TextGrouper.kt` |
-| Terjemahan on-device + deteksi bahasa | `app/src/main/java/com/floattrans/app/core/TranslateEngine.kt` |
+| Terjemahan online (Google) + cadangan offline ML Kit | `app/src/main/java/com/floattrans/app/core/GoogleTranslator.kt`, `core/TranslateEngine.kt` |
+| Cek pembaruan & unduh APK dari GitHub Releases | `app/src/main/java/com/floattrans/app/update/UpdateChecker.kt` |
 | Gelembung, menu, kanvas terjemahan bergaya komik | `app/src/main/java/com/floattrans/app/overlay/` |
-| Layar pengaturan & izin | `app/src/main/java/com/floattrans/app/MainActivity.kt` |
+| Layar pengaturan, izin, dan pembaruan | `app/src/main/java/com/floattrans/app/MainActivity.kt` |
 
 Overlay sendiri ikut tertangkap layar, jadi aplikasi menyembunyikan jendela overlay selama ±140 ms pada setiap pengambilan frame, lalu menampilkannya kembali.
 
@@ -80,11 +85,11 @@ Build lokal (butuh JDK 17 + Android SDK 35):
 Build lewat GitHub Actions (otomatis):
 
 - Setiap push ke `main` / `master`, pull request, atau manual `workflow_dispatch` → APK diunggah sebagai artifact.
-- Push tag `v1.1.0` → APK otomatis dilampirkan ke GitHub Release:
+- Push tag `v1.2.0` → APK otomatis dilampirkan ke GitHub Release:
 
   ```bash
-  git tag v1.1.0
-  git push origin v1.1.0
+  git tag v1.2.0
+  git push origin v1.2.0
   ```
 
 - APK release bertanda tangan resmi (opsional): tambahkan secret `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`. Tanpa secret ini CI tetap menghasilkan APK debug yang bisa dipasang.
@@ -92,7 +97,7 @@ Build lewat GitHub Actions (otomatis):
 ## Batasan yang perlu diketahui
 
 - Konten berproteksi `FLAG_SECURE` (video streaming berbayar, aplikasi banking) tidak bisa ditangkap — layar akan hitam. Aplikasi baca komik biasanya tidak memakai proteksi ini.
-- Model terjemahan diunduh sekali per pasangan bahasa; tanpa internet dan tanpa model, terjemahan gagal (teks asli tetap tampil).
+- Mesin **Google online** butuh internet; tanpa koneksi aplikasi otomatis memakai ML Kit offline (kualitas lebih rendah, dan model bahasa baru diunduh sekali per pasangan bahasa).
 - OCR terbaik pada teks horizontal. Teks vertikal atau efek tipografi ekstrem bisa salah baca.
 - Jika layar diputar saat sesi berjalan, hentikan dan mulai ulang sesi agar ukuran tangkapan ikut menyesuaikan.
 - APK dari Actions ditandatangani dengan debug keystore yang dibuat ulang di setiap build, sehingga APK baru **tidak bisa** dipasang menimpa versi lama: uninstall dulu, atau isi 4 secret keystore agar CI menghasilkan APK release bertanda tangan tetap.
@@ -100,7 +105,7 @@ Build lewat GitHub Actions (otomatis):
 
 ## Privasi
 
-Tidak ada server, tidak ada akun, tidak ada analitik. Tangkapan layar diproses di memori perangkat dan dibuang setelah diterjemahkan. Satu-satunya koneksi keluar adalah unduhan model ML Kit dari Google.
+Tidak ada server milik proyek ini, tidak ada akun, tidak ada analitik. Tangkapan layar diproses di memori perangkat dan dibuang setelah diterjemahkan — gambar layar tidak pernah diunggah. Koneksi keluar hanya: (1) teks hasil OCR ke Google Translate saat mesin online aktif, (2) unduhan model ML Kit untuk mode offline, dan (3) permintaan ke GitHub Releases saat memeriksa pembaruan. Pilih **Offline ML Kit** bila tidak ingin ada teks yang dikirim ke Google.
 
 ## Lisensi font
 

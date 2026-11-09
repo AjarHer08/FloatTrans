@@ -9,12 +9,15 @@ import com.google.mlkit.nl.translate.TranslatorOptions
 data class TranslationResult(
     val lines: List<String>,
     /** Language code actually used, after auto-detection. */
-    val sourceLang: String
+    val sourceLang: String,
+    /** "online" (Google) or "offline" (ML Kit), for the status line. */
+    val engine: String = "offline"
 )
 
 /**
- * Wraps ML Kit's on-device translator. Models are downloaded once per language
- * pair (a few MB, requires internet the first time) and then run fully offline.
+ * Translates a page. Preference order is online neural translation (much more
+ * accurate for comic dialogue), then ML Kit's on-device models when the network
+ * is unavailable so the app still works offline.
  */
 class TranslateEngine {
 
@@ -25,15 +28,35 @@ class TranslateEngine {
     suspend fun translateTexts(
         texts: List<String>,
         sourceSetting: String,
-        targetSetting: String
+        targetSetting: String,
+        engineSetting: String = Prefs.ENGINE_SMART
     ): TranslationResult {
         if (texts.isEmpty()) return TranslationResult(emptyList(), sourceSetting)
 
         val target = if (Languages.isSupported(targetSetting)) targetSetting else "id"
+        val detected = if (sourceSetting == Languages.AUTO) detectSource(texts, target) else null
+
+        if (engineSetting != Prefs.ENGINE_OFFLINE) {
+            // Google misbehaves on "sl=auto" with several bubbles at once (it can
+            // leave whole sentences untranslated), so detect locally first and
+            // send an explicit source language whenever we know it.
+            val onlineSource = when {
+                detected != null -> detected
+                Languages.isSupported(sourceSetting) -> sourceSetting
+                else -> Languages.AUTO
+            }
+            val online = runCatching {
+                GoogleTranslator.translate(texts, onlineSource, target)
+            }.getOrNull()
+            if (online != null) {
+                return TranslationResult(online.texts, online.sourceLang, "online")
+            }
+        }
+
         val source = when {
-            sourceSetting == Languages.AUTO -> detect(texts)
+            detected != null -> detected
             Languages.isSupported(sourceSetting) -> sourceSetting
-            else -> detect(texts)
+            else -> "en"
         }
 
         if (source == target) {
@@ -47,18 +70,28 @@ class TranslateEngine {
         for (text in texts) {
             translated.add(runCatching { active.translate(text).await() }.getOrDefault(text))
         }
-        return TranslationResult(translated, source)
+        return TranslationResult(translated, source, "offline")
     }
 
-    private suspend fun detect(texts: List<String>): String {
+    /**
+     * Language identification runs locally (no model download needed). A result
+     * that matches the target language while the text is clearly in a non-Latin
+     * script is ignored, because then the identifier was wrong.
+     */
+    private suspend fun detectSource(texts: List<String>, target: String): String? {
         val sample = texts.joinToString(" ").take(600)
-        if (sample.isBlank()) return "en"
+        if (sample.isBlank()) return null
         val candidates = runCatching { languageId.identifyPossibleLanguages(sample).await() }
             .getOrDefault(emptyList())
-        for (candidate in candidates) {
-            Languages.normalize(candidate.languageTag)?.let { return it }
-        }
-        return "en"
+        val picked = candidates.firstNotNullOfOrNull { Languages.normalize(it.languageTag) }
+            ?: return null
+        if (picked == target && hasNonLatinScript(sample)) return null
+        return picked
+    }
+
+    private fun hasNonLatinScript(text: String): Boolean = text.any { ch ->
+        ch in '\uAC00'..'\uD7A3' || ch in '\u3040'..'\u30FF' || ch in '\u3400'..'\u9FFF' ||
+            ch in '\u0400'..'\u04FF' || ch in '\u0600'..'\u06FF' || ch in '\u0E00'..'\u0E7F'
     }
 
     private fun translatorFor(source: String, target: String): Translator {

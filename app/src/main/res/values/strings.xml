@@ -15,6 +15,7 @@
     <string name="ocr_script">Jenis teks di layar</string>
     <string name="source_language">Bahasa sumber</string>
     <string name="target_language">Terjemahkan ke</string>
+    <string name="translation_engine">Mesin terjemahan</string>
 
     <string name="section_display">Tampilan terjemahan</string>
     <string name="text_size">Ukuran maks. teks: %1$d sp</string>
@@ -26,7 +27,28 @@
     <string name="result_empty">Belum ada terjemahan. Tekan tombol Mulai, lalu buka aplikasi baca komik Anda.</string>
 
     <string name="help_title">Cara pakai</string>
-    <string name="help_body">1. Aktifkan izin overlay, lalu tekan Mulai dan setujui permintaan tangkap layar Android.\n\n2. Buka aplikasi manhwa/manga/manhua/komik Inggris Anda. Gelembung 文A akan melayang di atas layar.\n\n3. Mode otomatis langsung menerjemahkan halaman yang terbuka, lalu terus memantau layar. Begitu Anda pindah halaman, scroll webtoon, atau membuka chapter berikutnya, terjemahan baru muncul sendiri tanpa perlu menekan apa pun.\n\n4. Teks digambar menimpa balon aslinya dengan gaya lettering komik: font komik, rata tengah, pas di dalam balon, hitam pada balon terang dan putih bergaris pada balon gelap.\n\n5. Ketuk gelembung untuk menerjemahkan ulang sekali, tahan untuk membuka menu (otomatis, bersihkan, pengaturan, hentikan).\n\nCatatan: konten berproteksi DRM (mis. video streaming berbayar) tidak dapat ditangkap. Model terjemahan bahasa baru diunduh sekali saat pertama dipakai sehingga butuh internet.</string>
+    <string name="help_body">1. Aktifkan izin overlay, lalu tekan Mulai dan setujui permintaan tangkap layar Android.\n\n2. Buka aplikasi manhwa/manga/manhua/komik Inggris Anda. Gelembung 文A akan melayang di atas layar.\n\n3. Mode otomatis langsung menerjemahkan halaman yang terbuka, lalu terus memantau layar. Begitu Anda pindah halaman, scroll webtoon, atau membuka chapter berikutnya, terjemahan baru muncul sendiri tanpa perlu menekan apa pun.\n\n4. Teks digambar menimpa balon aslinya dengan gaya lettering komik: font komik, rata tengah, pas di dalam balon, hitam pada balon terang dan putih bergaris pada balon gelap.\n\n5. Ketuk gelembung untuk menerjemahkan ulang sekali, tahan untuk membuka menu (otomatis, bersihkan, pengaturan, hentikan).\n\n6. Jika hasil terjemahan terasa aneh, pastikan Mesin terjemahan = otomatis/Google (lebih akurat untuk bahasa Korea/Tionghoa/Jepang); mode offline dipakai saat tidak ada internet.\n\n7. Tekan Periksa pembaruan kapan saja untuk memeriksa rilis baru dan memasangnya langsung dari aplikasi.\n\nCatatan: konten berproteksi DRM (mis. video streaming berbayar) tidak dapat ditangkap.</string>
+
+    <string name="section_update">Pembaruan</string>
+    <string name="check_updates">Periksa pembaruan</string>
+    <string name="update_installed">Terpasang v%1$s</string>
+    <string name="update_checking">Memeriksa pembaruan…</string>
+    <string name="update_check_failed">Tidak bisa memeriksa pembaruan. Periksa koneksi internet.</string>
+    <string name="update_latest">Sudah versi terbaru (v%1$s)</string>
+    <string name="update_available">Pembaruan tersedia: v%1$s</string>
+    <string name="update_dialog_title">Pembaruan v%1$s</string>
+    <string name="update_download_install">Unduh &amp; pasang</string>
+    <string name="update_open_browser">Buka di browser</string>
+    <string name="update_later">Nanti</string>
+    <string name="update_downloading">Mengunduh pembaruan…</string>
+    <string name="update_percent">%1$d%%</string>
+    <string name="update_percent_zero">0%</string>
+    <string name="update_download_failed">Unduhan gagal. Coba lagi atau buka halaman rilis di browser.</string>
+    <string name="update_install_failed">Tidak bisa membuka pemasang APK.</string>
+    <string name="update_allow_install">Izinkan "Instal aplikasi tidak dikenal" untuk FloatTrans, lalu tekan Periksa pembaruan lagi.</string>
+    <string name="update_no_apk">Belum ada APK di rilis ini. Membuka halaman rilis…</string>
+    <string name="update_notes_empty">Tidak ada catatan rilis.</string>
+    <string name="update_open_failed">Tidak bisa membuka browser.</string>
 
     <string name="notification_channel">Penangkapan layar</string>
     <string name="notification_title">FloatTrans aktif</string>

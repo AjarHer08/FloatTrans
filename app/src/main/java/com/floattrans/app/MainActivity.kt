@@ -13,10 +13,13 @@ import android.provider.Settings
 import android.view.View
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
+import android.widget.ProgressBar
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -25,7 +28,12 @@ import com.floattrans.app.core.Languages
 import com.floattrans.app.core.OcrScript
 import com.floattrans.app.core.Prefs
 import com.floattrans.app.databinding.ActivityMainBinding
+import com.floattrans.app.update.UpdateChecker
+import com.floattrans.app.update.UpdateInfo
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
 
@@ -45,8 +53,18 @@ class MainActivity : AppCompatActivity() {
         Prefs.STYLE_NONE to "Tanpa latar (teks saja)"
     )
 
+    private val engineOptions = listOf(
+        Prefs.ENGINE_SMART to "Otomatis (Google, cadangan offline)",
+        Prefs.ENGINE_ONLINE to "Google online (paling akurat)",
+        Prefs.ENGINE_OFFLINE to "Offline ML Kit (tanpa internet)"
+    )
+
     private val sourceOptions by lazy { Languages.sourceEntries() }
     private val targetOptions by lazy { Languages.targetEntries() }
+
+    private var updateChecked = false
+    private var updateJob: Job? = null
+    private var pendingUpdate: UpdateInfo? = null
 
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -71,6 +89,7 @@ class MainActivity : AppCompatActivity() {
         setupLanguagePickers()
         setupDisplayPickers()
         setupActions()
+        setupUpdateCard()
         observeState()
     }
 
@@ -78,6 +97,17 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         refreshPermissionLabel()
         refreshButtons()
+
+        if (!updateChecked) {
+            updateChecked = true
+            checkForUpdates(manual = false)
+        } else {
+            // Returning from the "install unknown apps" settings: finish the
+            // update the user had already approved.
+            val pending = pendingUpdate
+            pendingUpdate = null
+            if (pending != null && canInstallPackages()) downloadAndInstall(pending)
+        }
     }
 
     // ------------------------------------------------------------------ settings
@@ -100,6 +130,12 @@ class MainActivity : AppCompatActivity() {
             targetOptions.map { it.second },
             targetOptions.map { it.first }.indexOf(Prefs.targetLang)
         ) { index -> Prefs.targetLang = targetOptions[index].first }
+
+        bindPicker(
+            binding.spEngine,
+            engineOptions.map { it.second },
+            engineOptions.map { it.first }.indexOf(Prefs.translationEngine)
+        ) { index -> Prefs.translationEngine = engineOptions[index].first }
     }
 
     private fun setupDisplayPickers() {
@@ -169,6 +205,7 @@ class MainActivity : AppCompatActivity() {
     // ------------------------------------------------------------------- actions
 
     private fun setupActions() {
+        binding.btnCheckUpdate.setOnClickListener { checkForUpdates(manual = true) }
         binding.btnOverlay.setOnClickListener { openOverlaySettings() }
         binding.btnStart.setOnClickListener { onStartClicked() }
         binding.btnStop.setOnClickListener {
@@ -268,6 +305,123 @@ class MainActivity : AppCompatActivity() {
             if (granted) R.string.permission_overlay_granted else R.string.permission_overlay_missing
         )
         binding.btnOverlay.visibility = if (granted) View.GONE else View.VISIBLE
+    }
+
+    // ------------------------------------------------------------------- updates
+
+    private fun setupUpdateCard() {
+        binding.tvUpdateInfo.text = getString(R.string.update_installed, installedVersion())
+    }
+
+    private fun installedVersion(): String = runCatching {
+        packageManager.getPackageInfo(packageName, 0).versionName
+    }.getOrNull() ?: "?"
+
+    private fun checkForUpdates(manual: Boolean) {
+        if (updateJob?.isActive == true) return
+        updateJob = lifecycleScope.launch {
+            binding.btnCheckUpdate.isEnabled = false
+            binding.tvUpdateInfo.text = getString(R.string.update_checking)
+
+            val info = UpdateChecker.check()
+            binding.btnCheckUpdate.isEnabled = true
+            val current = installedVersion()
+
+            if (info == null) {
+                binding.tvUpdateInfo.text = getString(R.string.update_installed, current)
+                if (manual) toast(getString(R.string.update_check_failed))
+                return@launch
+            }
+            if (!UpdateChecker.isNewer(info.versionName, current)) {
+                val text = getString(R.string.update_latest, current)
+                binding.tvUpdateInfo.text = text
+                if (manual) toast(text)
+                return@launch
+            }
+            binding.tvUpdateInfo.text = getString(R.string.update_available, info.versionName)
+            showUpdateDialog(info)
+        }
+    }
+
+    private fun showUpdateDialog(info: UpdateInfo) {
+        val notes = info.notes.ifBlank { getString(R.string.update_notes_empty) }.take(1500)
+        MaterialAlertDialogBuilder(this)
+            .setTitle(getString(R.string.update_dialog_title, info.versionName))
+            .setMessage(notes)
+            .setPositiveButton(R.string.update_download_install) { _, _ -> downloadAndInstall(info) }
+            .setNeutralButton(R.string.update_open_browser) { _, _ -> openUrl(info.pageUrl) }
+            .setNegativeButton(R.string.update_later, null)
+            .show()
+    }
+
+    private fun downloadAndInstall(info: UpdateInfo) {
+        if (info.apkUrl.isNullOrBlank()) {
+            toast(getString(R.string.update_no_apk))
+            openUrl(info.pageUrl)
+            return
+        }
+        if (!canInstallPackages()) {
+            pendingUpdate = info
+            requestInstallPermission()
+            return
+        }
+
+        val view = layoutInflater.inflate(R.layout.dialog_update_progress, null)
+        val bar = view.findViewById<ProgressBar>(R.id.pbUpdate)
+        val percent = view.findViewById<TextView>(R.id.tvUpdatePercent)
+        val dialog = MaterialAlertDialogBuilder(this)
+            .setTitle(R.string.update_downloading)
+            .setView(view)
+            .setCancelable(true)
+            .create()
+
+        val job = lifecycleScope.launch {
+            val file = UpdateChecker.download(this@MainActivity, info) { progress ->
+                runOnUiThread {
+                    bar.progress = progress
+                    percent.text = getString(R.string.update_percent, progress)
+                }
+            }
+            runCatching { dialog.dismiss() }
+            if (file == null) {
+                toast(getString(R.string.update_download_failed))
+                return@launch
+            }
+            installApk(file)
+        }
+        dialog.setOnCancelListener { job.cancel() }
+        dialog.show()
+    }
+
+    private fun installApk(file: File) {
+        val uri = FileProvider.getUriForFile(this, "$packageName.updates", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        runCatching { startActivity(intent) }
+            .onFailure { toast(getString(R.string.update_install_failed)) }
+    }
+
+    private fun canInstallPackages(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.O || packageManager.canRequestPackageInstalls()
+
+    private fun requestInstallPermission() {
+        toast(getString(R.string.update_allow_install))
+        runCatching {
+            startActivity(
+                Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:$packageName")
+                )
+            )
+        }.onFailure { toast(getString(R.string.update_install_failed)) }
+    }
+
+    private fun openUrl(url: String) {
+        if (url.isBlank()) return
+        runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+            .onFailure { toast(getString(R.string.update_open_failed)) }
     }
 
     private fun toast(message: String) {
