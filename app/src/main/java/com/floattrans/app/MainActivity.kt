@@ -344,7 +344,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showUpdateDialog(info: UpdateInfo) {
-        val notes = info.notes.ifBlank { getString(R.string.update_notes_empty) }.take(1500)
+        val notes = info.notes.trim()
+            .replace("**", "")
+            .ifBlank { getString(R.string.update_notes_empty) }
+            .take(1500)
         MaterialAlertDialogBuilder(this)
             .setTitle(getString(R.string.update_dialog_title, info.versionName))
             .setMessage(notes)
